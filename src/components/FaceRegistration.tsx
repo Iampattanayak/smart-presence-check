@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Camera, Upload, RefreshCw, Check, AlertCircle, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,15 +20,31 @@ const FaceRegistration: React.FC = () => {
     department: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Clean up function for camera stream
+  useEffect(() => {
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [stream]);
 
   const startCamera = useCallback(async () => {
     try {
+      // Stop any existing stream first
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      
       const mediaStream = await navigator.mediaDevices.getUserMedia({ 
         video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } 
       });
       
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        // Ensure the video plays
+        videoRef.current.play().catch(e => console.error("Error playing video:", e));
         setStream(mediaStream);
         setIsCapturing(true);
       }
@@ -40,11 +56,14 @@ const FaceRegistration: React.FC = () => {
         variant: "destructive",
       });
     }
-  }, [toast]);
+  }, [toast, stream]);
 
   const stopCamera = useCallback(() => {
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
       setStream(null);
       setIsCapturing(false);
     }
@@ -187,7 +206,7 @@ const FaceRegistration: React.FC = () => {
                     autoPlay
                     playsInline
                     muted
-                    className="absolute inset-0 w-full h-full object-cover"
+                    className="absolute inset-0 w-full h-full object-cover z-10"
                   />
                 ) : (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground">
@@ -197,7 +216,7 @@ const FaceRegistration: React.FC = () => {
                 )}
                 
                 {isCapturing && (
-                  <div className="camera-frame inset-10"></div>
+                  <div className="camera-frame inset-10 z-20"></div>
                 )}
                 
                 <canvas ref={canvasRef} className="hidden" />
