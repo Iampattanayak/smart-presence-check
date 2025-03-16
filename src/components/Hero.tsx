@@ -54,7 +54,7 @@ const Hero: React.FC = () => {
                 <Clock className="h-10 w-10 text-primary" />
               </div>
               <h3 className="font-medium mb-2">Real-Time Tracking</h3>
-              <p className="text-sm text-muted-foreground">Instant check-in/out with < 1 second latency</p>
+              <p className="text-sm text-muted-foreground">Instant check-in/out with 1 second latency</p>
             </div>
             
             <div className="frosted-card p-6 text-center hover-card">
