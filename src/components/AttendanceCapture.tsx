@@ -1,10 +1,11 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, RefreshCw, Check, User, MapPin, Clock, X } from 'lucide-react';
+import { Camera, RefreshCw, Check, User, MapPin, Clock, X, ShieldAlert, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const AttendanceCapture: React.FC = () => {
   const { toast } = useToast();
@@ -20,6 +21,7 @@ const AttendanceCapture: React.FC = () => {
     status: 'check-in' | 'check-out';
   } | null>(null);
   const [currentTime, setCurrentTime] = useState('');
+  const [cameraError, setCameraError] = useState<string | null>(null);
 
   // Update the current time every second
   useEffect(() => {
@@ -39,9 +41,26 @@ const AttendanceCapture: React.FC = () => {
     
     return () => clearInterval(interval);
   }, []);
+  
+  // Clean up function for camera stream
+  useEffect(() => {
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [stream]);
 
   const startCamera = useCallback(async () => {
     try {
+      // Reset any previous error
+      setCameraError(null);
+      
+      // Stop any existing stream first
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      
       const mediaStream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: 'user', 
@@ -52,6 +71,8 @@ const AttendanceCapture: React.FC = () => {
       
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        // Ensure the video plays
+        await videoRef.current.play();
         setStream(mediaStream);
         setIsCapturing(true);
         
@@ -62,17 +83,35 @@ const AttendanceCapture: React.FC = () => {
       }
     } catch (error) {
       console.error('Error accessing camera:', error);
+      
+      let errorMessage = "Unable to access camera. Please check permissions.";
+      
+      if (error instanceof Error) {
+        if (error.name === "NotAllowedError") {
+          errorMessage = "Camera access denied. Please allow camera permission in your browser settings.";
+        } else if (error.name === "NotFoundError") {
+          errorMessage = "No camera found on your device.";
+        } else if (error.name === "NotReadableError") {
+          errorMessage = "Camera is already in use by another application.";
+        }
+      }
+      
+      setCameraError(errorMessage);
+      
       toast({
-        title: "Camera access denied",
-        description: "Please allow camera access for facial recognition.",
+        title: "Camera access issue",
+        description: errorMessage,
         variant: "destructive",
       });
     }
-  }, [toast]);
+  }, [toast, stream]);
 
   const stopCamera = useCallback(() => {
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
       setStream(null);
       setIsCapturing(false);
     }
@@ -98,6 +137,11 @@ const AttendanceCapture: React.FC = () => {
     }
     return null;
   }, [isCapturing]);
+
+  const retryCamera = () => {
+    setCameraError(null);
+    startCamera();
+  };
 
   // This is a simulated face recognition function for demo purposes
   const simulateRecognition = () => {
@@ -165,13 +209,26 @@ const AttendanceCapture: React.FC = () => {
         <CardContent>
           <div className="space-y-6">
             <div className="relative aspect-video bg-black/5 rounded-lg overflow-hidden">
-              {isCapturing ? (
+              {cameraError ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+                  <ShieldAlert className="h-12 w-12 mb-4 text-destructive opacity-70" />
+                  <p className="mb-4 text-destructive">{cameraError}</p>
+                  <Button 
+                    type="button" 
+                    onClick={retryCamera}
+                    variant="outline" 
+                    size="sm"
+                  >
+                    Try Again
+                  </Button>
+                </div>
+              ) : isCapturing ? (
                 <video
                   ref={videoRef}
                   autoPlay
                   playsInline
                   muted
-                  className="absolute inset-0 w-full h-full object-cover"
+                  className="absolute inset-0 w-full h-full object-cover z-10"
                 />
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground">
@@ -183,7 +240,7 @@ const AttendanceCapture: React.FC = () => {
               {isCapturing && (
                 <div 
                   ref={frameRef}
-                  className={`camera-frame inset-10 ${isProcessing ? 'actively-processing' : ''}`}
+                  className={`camera-frame inset-10 z-20 ${isProcessing ? 'actively-processing' : ''}`}
                   style={{ 
                     borderColor: isProcessing ? 'hsl(var(--primary))' : 'hsl(var(--primary) / 0.3)',
                     borderWidth: isProcessing ? '3px' : '2px',
@@ -195,7 +252,7 @@ const AttendanceCapture: React.FC = () => {
               <canvas ref={canvasRef} className="hidden" />
               
               {recognizedUser && (
-                <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex flex-col items-center justify-center animate-fade-in">
+                <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex flex-col items-center justify-center animate-fade-in z-30">
                   <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-4">
                     <User className="h-10 w-10 text-primary" />
                   </div>
@@ -207,6 +264,17 @@ const AttendanceCapture: React.FC = () => {
                 </div>
               )}
             </div>
+            
+            {cameraError && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Camera Access Error</AlertTitle>
+                <AlertDescription>
+                  Please ensure that camera permissions are allowed in your browser settings.
+                  You may need to refresh the page after enabling permission.
+                </AlertDescription>
+              </Alert>
+            )}
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="flex items-center p-4 rounded-lg border border-border bg-secondary/20">
@@ -233,7 +301,7 @@ const AttendanceCapture: React.FC = () => {
             <>
               <Button 
                 onClick={handleCapture}
-                disabled={isProcessing}
+                disabled={isProcessing || !!cameraError}
                 className="w-full"
               >
                 {isProcessing ? (
@@ -261,6 +329,7 @@ const AttendanceCapture: React.FC = () => {
             <Button 
               onClick={startCamera} 
               className="w-full"
+              disabled={!!cameraError}
             >
               <Camera className="mr-2 h-4 w-4" />
               Start Camera

@@ -1,11 +1,12 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Camera, Upload, RefreshCw, Check, AlertCircle, User } from 'lucide-react';
+import { Camera, Upload, RefreshCw, Check, AlertCircle, User, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const FaceRegistration: React.FC = () => {
   const { toast } = useToast();
@@ -20,6 +21,7 @@ const FaceRegistration: React.FC = () => {
     department: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   
   // Clean up function for camera stream
   useEffect(() => {
@@ -32,6 +34,9 @@ const FaceRegistration: React.FC = () => {
 
   const startCamera = useCallback(async () => {
     try {
+      // Reset any previous error
+      setCameraError(null);
+      
       // Stop any existing stream first
       if (stream) {
         stream.getTracks().forEach(track => track.stop());
@@ -44,15 +49,30 @@ const FaceRegistration: React.FC = () => {
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
         // Ensure the video plays
-        videoRef.current.play().catch(e => console.error("Error playing video:", e));
+        await videoRef.current.play();
         setStream(mediaStream);
         setIsCapturing(true);
       }
     } catch (error) {
       console.error('Error accessing camera:', error);
+      
+      let errorMessage = "Unable to access camera. Please check permissions.";
+      
+      if (error instanceof Error) {
+        if (error.name === "NotAllowedError") {
+          errorMessage = "Camera access denied. Please allow camera permission in your browser settings.";
+        } else if (error.name === "NotFoundError") {
+          errorMessage = "No camera found on your device.";
+        } else if (error.name === "NotReadableError") {
+          errorMessage = "Camera is already in use by another application.";
+        }
+      }
+      
+      setCameraError(errorMessage);
+      
       toast({
-        title: "Camera access denied",
-        description: "Please allow camera access to register your face.",
+        title: "Camera access issue",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -146,6 +166,11 @@ const FaceRegistration: React.FC = () => {
     }, 2000);
   };
 
+  const retryCamera = () => {
+    setCameraError(null);
+    startCamera();
+  };
+
   return (
     <div className="max-w-2xl mx-auto p-4">
       <Card className="frosted-card overflow-hidden">
@@ -200,7 +225,20 @@ const FaceRegistration: React.FC = () => {
             
             <div className="space-y-4">
               <div className="relative aspect-video bg-black/5 rounded-lg overflow-hidden">
-                {isCapturing ? (
+                {cameraError ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+                    <ShieldAlert className="h-12 w-12 mb-4 text-destructive opacity-70" />
+                    <p className="mb-4 text-destructive">{cameraError}</p>
+                    <Button 
+                      type="button" 
+                      onClick={retryCamera}
+                      variant="outline" 
+                      size="sm"
+                    >
+                      Try Again
+                    </Button>
+                  </div>
+                ) : isCapturing ? (
                   <video
                     ref={videoRef}
                     autoPlay
@@ -221,6 +259,17 @@ const FaceRegistration: React.FC = () => {
                 
                 <canvas ref={canvasRef} className="hidden" />
               </div>
+              
+              {cameraError && (
+                <Alert variant="destructive" className="mb-4">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Camera Access Error</AlertTitle>
+                  <AlertDescription>
+                    Please ensure that camera permissions are allowed in your browser settings.
+                    You may need to refresh the page after enabling permission.
+                  </AlertDescription>
+                </Alert>
+              )}
               
               <div className="flex flex-wrap gap-2">
                 {capturedImages.map((image, index) => (
@@ -269,6 +318,7 @@ const FaceRegistration: React.FC = () => {
                     type="button" 
                     onClick={startCamera} 
                     className="w-full"
+                    disabled={!!cameraError}
                   >
                     <Camera className="mr-2 h-4 w-4" />
                     Start Camera
